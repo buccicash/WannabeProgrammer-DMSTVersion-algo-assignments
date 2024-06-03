@@ -1,0 +1,104 @@
+import os
+import sys
+import math
+
+# Main Program
+# Check the arguments
+if len(sys.argv) < 3:
+    print("Usage: python bursts.py algorithm offsets_file [s] [gamma]")
+    print("algorithm: 'viterbi' or 'trellis'")
+    print("offsets_file: The file containing the timestamps")
+    print("[s]: Optional, value of parameter s (default: 2)")
+    print("[gamma]: Optional, value of parameter gamma (default: 1)")
+    sys.exit(1)
+
+algorithm = sys.argv[1]
+filename = sys.argv[2]
+
+# S value
+if len(sys.argv) > 3:
+    s = float(sys.argv[3])
+else:
+    s = 2.0
+
+if s <= 1:
+    print("Error: Parameter s must be greater than 1.")
+    sys.exit(1)
+
+# Gamma
+if len(sys.argv) > 4:
+    gamma = float(sys.argv[4])
+else:
+    gamma = 1.0
+
+if gamma <= 0:
+    print("Error: Parameter gamma must be positive.")
+    sys.exit(1)
+
+# Calculate variables
+# Check if the file exists
+time_stamps = []
+if not os.path.isfile(filename):
+    print("Error: File does not exist.")
+    sys.exit(1)
+else:
+    # File exists and we read data
+    with open(filename, 'r') as file:
+        data = file.read()
+    time_stamps = data.split() # remove blanks and make a new list
+    for i in time_stamps:
+        time_stamp = float(i) # Make each value float for processing
+        if time_stamp < 0:
+            print("Timestamps must be positive numbers!")
+            sys.exit(1)
+
+# Find differenences in continuous timestamps
+differences  = []
+for i in range(len(time_stamps)):
+    differences.append(time_stamp[i] - time_stamp[i-1])
+
+# Parameters of states
+k_values = []
+l_values = []
+total_time = sum(differences)  # Sum of all intervals
+num_intervals = len(differences)  # Number of intervals
+average_interval = total_time / num_intervals  # Average interval
+min_interval = min(differences)  # Smallest interval
+k_values = math.ceil(1 + math.log(total_time) / math.log(s) + math.log(1 / min_interval) / math.log(s))  # Number of states
+for i in range(k_values):
+    l_values.append(s**i / average_interval) # Lambdas
+
+
+# Algorithm selection
+if algorithm == 'viterbi':
+    sys.exit(0)
+elif algorithm == 'trellis':
+    size = len(differences)
+
+    # Initialize distances
+    distances = [float('inf')] * size
+    distances[0] = 0  # Distance to the source is 0
+
+    # simplify edges for all differeneces
+    for i in range(size - 1):
+        for j in range(size):
+            for k in range(j + 1, size):
+                weight = differences[k]
+                if distances[j] + weight < distances[k]:
+                    distances[k] = distances[j] + weight
+
+    # check negative cycles
+    for i in range(size):
+        for j in range(i + 1, size):
+            weight = differences[j]
+            if distances[i] + weight < distances[j]:
+                print("Graph contains a negative-weight cycle")
+                sys.exit(1)
+
+    # Output the distances
+    print("Shortest distances from source to each vertex:")
+    for i in range(size):
+        print(f"Vertex {i}: {distances[i]}")
+else:
+    print("Wrong input algorithm.Use  only'viterbi' or 'trellis'!")
+    sys.exit(1)
