@@ -1,0 +1,163 @@
+import os
+import sys
+import math
+
+# Main Program
+# Check the arguments
+if len(sys.argv) < 3:
+    print("Usage: python bursts.py algorithm offsets_file [s] [gamma] [d]")
+    print("algorithm: 'viterbi' or 'trellis'")
+    print("offsets_file: The file containing the timestamps")
+    print("[s]: Optional, value of parameter s (default: 2)")
+    print("[gamma]: Optional, value of parameter gamma (default: 1)")
+    print("[d]: Optional, to enalbe diagnostic messages")
+    sys.exit(1)
+
+algorithm = sys.argv[1]
+print(algorithm)
+filename = sys.argv[2]
+
+# S value
+if len(sys.argv) > 3:
+    s = float(sys.argv[3])
+else:
+    s = 2.0
+
+if s <= 1:
+    print("Error: Parameter s must be greater than 1.")
+    sys.exit(1)
+
+# Gamma
+if len(sys.argv) > 4:
+    gamma = float(sys.argv[4])
+else:
+    gamma = 1.0
+
+if gamma <= 0:
+    print("Error: Parameter gamma must be positive.")
+    sys.exit(1)
+
+# Diagnostic messages
+diagnostics = False
+if len(sys.argv) > 5 and sys.argv[5] == 'd':
+    diagnostics = True
+    
+# Calculate variables
+# Check if the file exists
+time_stamps = []
+if not os.path.isfile(filename):
+    print("Error: File does not exist.")
+    sys.exit(1)
+else:
+    # File exists and we read data
+    with open(filename, 'r') as file:
+        data = file.read()
+    time_stamps = data.split() # remove blanks and make a new list
+    time_stamps = [float(i) for i in time_stamps] # Make each value float for processing
+    for time_stamp in time_stamps:
+       if time_stamp < 0:
+            print("Timestamps must be positive numbers!")
+            sys.exit(1)
+
+# Find differenences in continuous timestamps
+differences  = []
+for i in range(1, len(time_stamps)):
+    differences.append(time_stamps[i] - time_stamps[i-1])
+
+# Parameters of states
+k_values = []
+l_values = []
+total_time = sum(differences)  # Sum of all intervals
+num_intervals = len(differences)  # Number of intervals
+average_interval = total_time / num_intervals  # Average interval
+min_interval = min(differences)  # Smallest interval
+k_values = math.ceil(1 + math.log(total_time) / math.log(s) + math.log(1 / min_interval) / math.log(s))  # Number of states
+for i in range(k_values):
+    l_values.append(s**i / average_interval) # Lambdas
+
+n = len(differences)
+states = []
+# Algorithm selection
+if algorithm == 'viterbi':
+   
+    # Matrix of cost
+    c = []
+    for i in range(n):
+        c.append([float('inf')] * k_values)
+    # Matrix of paths
+    p= []
+    for i in range(k_values):
+        p.append([0] * n)
+    
+    c[0][0] = 0 # Initial state cost is 0
+    
+    for t in range(1, n):
+        for j in range(k_values):
+            min_cost = float('inf')
+            min_state = 0
+            for i in range(k_values):
+                if j > i:
+                    transition_cost = gamma * math.log(t)
+                else:
+                    transition_cost = 0
+                cost = c[t - 1][i] + transition_cost
+                if cost < min_cost:
+                    min_cost = cost
+                    min_state = i
+            c[t][j] = min_cost + math.log(l_values[j]) - l_values[j] * differences[t - 1]
+            for m in range(t):
+                p[j][m] = p[min_state][m]
+            p[j][t] = j
+            
+            if diagnostics:
+                print(f"t={t}, j={j}, min_cost={min_cost}, min_state={min_state}, c[t][j]={c[t][j]}")
+
+    min_cost = min(c[-1])
+    min_state = c[-1].index(min_cost)
+    states = p[min_state]
+elif algorithm == 'trellis':
+    size = len(differences)
+
+    # Initialize distances
+    distances = [float('inf')] * size
+    distances[0] = 0  # Distance to the source is 0
+
+    # simplify edges for all differeneces
+    for i in range(size - 1):
+        for j in range(size):
+            for k in range(j + 1, size):
+                weight = differences[k]
+                if distances[j] + weight < distances[k]:
+                    distances[k] = distances[j] + weight
+                    
+                    if diagnostics:
+                        print(f"Relaxation: ({j}, {k}) -> {distances[k]} from {distances[j]} + {weight}")
+
+    # check negative cycles
+    for i in range(size):
+        for j in range(i + 1, size):
+            weight = differences[j]
+            if distances[i] + weight < distances[j]:
+                print("Graph contains a negative-weight cycle")
+                sys.exit(1)
+
+    states = distances
+else:
+    print("Wrong input algorithm.Use only 'viterbi' or 'trellis'!")
+    sys.exit(1)
+
+# print the state results
+current_state = states[0]
+start_time = differences[0]
+# loop through the differences list starting from the second element
+for i in range(1, len(differences)):
+    # Check if the state has changed
+    if states[i] != current_state:
+        # Print the current state and time range
+        print(current_state, "[", start_time, differences[i - 1], ")")
+        # Update the current state and start time
+        current_state = states[i]
+        start_time = differences[i - 1]
+
+# Print the last state and time range
+print(current_state, "[", start_time, differences[-1], ")")
