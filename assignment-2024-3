@@ -1,1 +1,177 @@
+G = nx.DiGraph()
 
+# Προσθήκη κόμβων και ακμών
+edges = [(0, 1), (0, 2), (1, 3), (1, 4), (2, 5), (2, 6), (3, 7), (4, 7), (5, 6)]
+G.add_edges_from(edges)
+
+# Ορίζουμε τον αρχικό σπόρο και την πιθανότητα
+seeds = [0]
+p = 0.5
+
+# Αρχικοποίηση των κόμβων ως ανενεργούς
+nx.set_node_attributes(G, False, "active")
+
+# Ορίζουμε τους σπόρους ως ενεργούς
+for seed in seeds:
+    G.nodes[seed]["active"] = True
+
+# Οπτικοποίηση του γράφου
+pos = nx.spring_layout(G)
+nx.draw(G, pos, with_labels=True, node_color=['red' if G.nodes[n]["active"] else 'gray' for n in G.nodes])
+plt.show()
+
+def simulate_influence(G, seeds, p):
+    # Ενεργοποίηση των αρχικών σπόρων
+    active_nodes = set(seeds)
+    # Ορίζουμε όλους τους σπόρους ως ενεργούς
+    for seed in seeds:
+        G.nodes[seed]["active"] = True
+
+    # Προσωρινή λίστα για επεξεργασία
+    to_process = list(seeds)
+
+    while to_process:
+        current = to_process.pop(0)
+        for neighbor in G.successors(current):
+            if not G.nodes[neighbor]["active"]:  # Εάν δεν είναι ήδη ενεργός
+                if random.random() < p:  # Πιθανότητα p για ενεργοποίηση
+                    G.nodes[neighbor]["active"] = True
+                    to_process.append(neighbor)
+                    active_nodes.add(neighbor)
+
+    return active_nodes
+
+# Σετ αρχικών σπόρων και πιθανότητας
+seeds = [0]
+p = 0.5
+
+# Κλήση της συνάρτησης simulate_influence
+activated_nodes = simulate_influence(G, seeds, p)
+print(f"Activated nodes: {activated_nodes}")
+
+# Οπτικοποίηση των ενεργών κόμβων
+pos = nx.spring_layout(G)
+nx.draw(G, pos, with_labels=True, node_color=['red' if G.nodes[n]["active"] else 'gray' for n in G.nodes])
+plt.show()
+
+def select_seed(G, current_seeds):
+    # Επιλογή του κόμβου με τις περισσότερες εξερχόμενες ακμές που δεν έχει ήδη επιλεγεί
+    candidate_nodes = [node for node in G.nodes if node not in current_seeds]
+    best_seed = max(candidate_nodes, key=lambda node: len(list(G.successors(node))))
+    return best_seed
+
+def maximize_influence(G, p, k):
+    S = set()
+    for i in range(k):
+        new_seed = select_seed(G, S)
+        S.add(new_seed)
+    return S
+
+# Καλούμε την maximize_influence για να βρούμε τους καλύτερους σπόρους
+best_seeds = maximize_influence(G, p=0.5, k=2)
+print(f"Selected seeds for maximum influence: {best_seeds}")
+
+# Εκτελούμε την simulate_influence με τους νέους σπόρους για να δούμε ποιους κόμβους ενεργοποιούν
+activated_nodes_by_seeds = simulate_influence(G, best_seeds, p=0.5)
+print(f"Activated nodes by selected seeds: {activated_nodes_by_seeds}")
+
+# Οπτικοποίηση των ενεργών κόμβων
+pos = nx.spring_layout(G)
+nx.draw(G, pos, with_labels=True, node_color=['red' if G.nodes[n]["active"] else 'gray' for n in G.nodes])
+plt.show()
+
+def monte_carlo_influence(G, seeds, p, iterations=1000):
+    total_influence = 0
+    for _ in range(iterations):
+        activated = simulate_influence(G, seeds, p)
+        total_influence += len(activated)
+    return total_influence / iterations
+
+def select_seed_by_influence(G, current_seeds, p):
+    remaining_nodes = [node for node in G.nodes if node not in current_seeds]
+    best_seed = None
+    max_influence = -1
+
+    for node in remaining_nodes:
+        test_seeds = current_seeds + [node]
+        influence = monte_carlo_influence(G, test_seeds, p)
+        
+        if influence > max_influence:
+            max_influence = influence
+            best_seed = node
+
+    return best_seed
+import argparse
+import random
+import networkx as nx
+import matplotlib.pyplot as plt
+
+def read_graph(filename):
+    G = nx.read_edgelist(filename, create_using=nx.DiGraph)
+    return G
+
+def select_seed_max_degree(G, current_seeds):
+    remaining_nodes = [node for node in G.nodes if node not in current_seeds]
+    return max(remaining_nodes, key=lambda node: G.out_degree(node))
+
+def select_seed_greedy(G, current_seeds, p, mc):
+    best_seed = None
+    max_influence = -1
+    for node in G.nodes:
+        if node not in current_seeds:
+            test_seeds = current_seeds + [node]
+            influence = monte_carlo_influence(G, test_seeds, p, mc)
+            if influence > max_influence:
+                max_influence = influence
+                best_seed = node
+    return best_seed, max_influence
+
+def monte_carlo_influence(G, seeds, p, iterations):
+    total_influence = 0
+    for _ in range(iterations):
+        activated = simulate_influence(G, seeds, p)
+        total_influence += len(activated)
+    return total_influence / iterations
+
+def simulate_influence(G, seeds, p):
+    activated = set(seeds)
+    to_process = list(seeds)
+    while to_process:
+        current = to_process.pop(0)
+        for neighbor in G.successors(current):
+            if neighbor not in activated and random.random() < p:
+                activated.add(neighbor)
+                to_process.append(neighbor)
+    return activated
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('filename')
+    parser.add_argument('k', type=int)
+    parser.add_argument('method', choices=['greedy', 'max_degree'])
+    parser.add_argument('probability', type=float)
+    parser.add_argument('mc', type=int)
+    parser.add_argument('-r', '--random_seed', type=int, default=None)
+    args = parser.parse_args()
+
+    if args.random_seed is not None:
+        random.seed(args.random_seed)
+
+    G = read_graph(args.filename)
+    seeds = []
+    influences = []
+
+    for _ in range(args.k):
+        if args.method == 'max_degree':
+            new_seed = select_seed_max_degree(G, seeds)
+            influence = monte_carlo_influence(G, seeds + [new_seed], args.probability, args.mc)
+        else:
+            new_seed, influence = select_seed_greedy(G, seeds, args.probability, args.mc)
+        seeds.append(new_seed)
+        influences.append(influence)
+    
+    print("Seeds", seeds)
+    print("Influences", influences)
+
+if __name__ == "__main__":
+    main()
